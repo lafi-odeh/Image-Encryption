@@ -8,7 +8,6 @@ def load_and_encrypt_image(image_path):
     pixels = np.array(image)
     num_channels = pixels.shape[2] if len(pixels.shape) > 2 else 1
     encrypted_pixels = pixels + np.random.randint(1, 10000, size=pixels.shape)
-    print("Pixels Value: ", pixels.shape, num_channels, encrypted_pixels.shape)
     return encrypted_pixels, num_channels, image.size
 
 # Step 2 & 3: Group pixels and convert to integers, then prepare the plain message
