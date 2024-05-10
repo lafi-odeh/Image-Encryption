@@ -11,8 +11,8 @@ def generate_keys():
 
 def main():
     receiverPrivateKey, receiverPublicKey = generate_keys()
-    generator = imageEncryptor("Assets/resources/Cat.jpg", receiverPublicKey)
-    imageDecryptor("encrypted_image.png", private_key=receiverPrivateKey)
+    generator = imageEncryptor("Assets/Resources/Cat.jpg", receiverPublicKey)
+    # imageDecryptor("encrypted_image.png", private_key=receiverPrivateKey)
 
 
 if __name__ == "__main__":

@@ -16,12 +16,11 @@ def imageLoader(image_path):
 def pixelsGrouping(encrypted_pixels):
     flat_pixels = encrypted_pixels.flatten()
     pixelPerGroup = len(getPixelsFromGroup(len(flat_pixels), 258)) - 1
-    groupsNumber = math.ceil(len(flat_pixels) / pixelPerGroup)
     large_integers = [
         makeGroupFromPixels(flat_pixels[i : i + pixelPerGroup], 258)
-        for i in range(0, groupsNumber, pixelPerGroup)
+        for i in range(0, len(flat_pixels), pixelPerGroup)
     ]
-    return large_integers
+    return large_integers, len(flat_pixels)
 
 
 def makeGroupFromPixels(pixels, base):
@@ -53,15 +52,14 @@ def ECC_Operator(large_integers, k, Pb):
 def pointFromPixel(pixel):
     x = pixel
     y = (x**3 + SECP256k1.curve.a() * x + SECP256k1.curve.b()) % SECP256k1.curve.p()
-    return ellipticcurve.PointJacobi(SECP256k1.curve, x, y, 0)
+    return ellipticcurve.PointJacobi(SECP256k1.curve, x, y, 43)
 
 
 def bytesConvertor(cipher_text):
     byte_array = list()
     for item in cipher_text:
         pixel = pixelfromPoint(item)
-        pixels = getPixelsFromGroup(pixel, 258)
-        print(len(pixels))
+        pixels = getPixelsFromGroup(pixel, 256)
         byte_array.extend(pixels)
     return byte_array
 
@@ -76,12 +74,12 @@ def imageBuilder(cipher_bytes, width, height, num_channels):
         (height, width, num_channels)
     )
     reconstructed_image = Image.fromarray(adjusted_cipher_bytes.astype("uint8"))
-    reconstructed_image.save("encrypted_image.png")
+    reconstructed_image.save("Assets/Output/encrypted_image.png")
 
 
 def imageEncryptor(image_path, public_key):
     encrypted_pixels, num_channels, (width, height) = imageLoader(image_path)
-    large_integers = pixelsGrouping(encrypted_pixels)
+    large_integers, num_pixels = pixelsGrouping(encrypted_pixels)
     cipher_text, generator = ECC_Operator(
         large_integers,
         int.from_bytes(os.urandom(32), "big") % SECP256k1.order,
@@ -89,7 +87,10 @@ def imageEncryptor(image_path, public_key):
     )
     cipher_bytes = bytesConvertor(cipher_text)
     imageBuilder(
-        cipher_bytes, width, height, math.ceil(len(cipher_bytes) / (width * height))
+        cipher_bytes,
+        width * (int(len(cipher_bytes) / num_pixels)),
+        height,
+        num_channels,
     )
     print("Image encryption and reconstruction complete.")
     return generator
