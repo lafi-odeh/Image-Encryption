@@ -1,57 +1,95 @@
 from PIL import Image
 import numpy as np
-import random
+import math
+from ecdsa import ellipticcurve, SECP256k1, numbertheory
+import os
 
-# Step 1: Load the image and encrypt by modifying pixel values
-def load_and_encrypt_image(image_path):
+
+def imageLoader(image_path):
     image = Image.open(image_path)
-    pixels = np.array(image)
-    num_channels = pixels.shape[2] if len(pixels.shape) > 2 else 1
-    encrypted_pixels = pixels + np.random.randint(1, 10000, size=pixels.shape)
+    pixels = np.array(image, dtype=object)
+    num_channels = pixels.shape[2]
+    encrypted_pixels = pixels + np.random.randint(1, 2)
     return encrypted_pixels, num_channels, image.size
 
-# Step 2 & 3: Group pixels and convert to integers, then prepare the plain message
-def pixels_to_large_integers(encrypted_pixels):
+
+def pixelsGrouping(encrypted_pixels):
     flat_pixels = encrypted_pixels.flatten()
-    large_integers = [int(''.join(map(str, flat_pixels[i:i+3]))) for i in range(0, len(flat_pixels), 3)]
+    pixelPerGroup = len(getPixelsFromGroup(len(flat_pixels), 258)) - 1
+    groupsNumber = math.ceil(len(flat_pixels) / pixelPerGroup)
+    large_integers = [
+        makeGroupFromPixels(flat_pixels[i : i + pixelPerGroup], 258)
+        for i in range(0, groupsNumber, pixelPerGroup)
+    ]
     return large_integers
 
-# Steps 4 & 5: Simulate ECC operations (simplified for demonstration)
-def ecc_operations(large_integers, k=123456, Pb=789012):  # Example k and Pb
-    kG = k * 2  # Simulating kG operation
-    kPb = k * Pb  # Simulating kPb operation
-    Pc = [(kPb + i) for i in large_integers]  # Simulate point addition with integers
-    return Pc
 
-# Step 6 adjustment: Ensure byte range conversion respects the original image size
-def convert_to_byte_range(cipher_text, target_size):
-    byte_array = [item % 256 for item in cipher_text]
-    # Adjust the size of the byte_array to match target_size
-    if len(byte_array) < target_size:
-        # If too short, pad with zeros
-        byte_array += [0] * (target_size - len(byte_array))
+def makeGroupFromPixels(pixels, base):
+    num = 0
+    for pixel in pixels:
+        num = num * base + pixel
+    return num
+
+
+def getPixelsFromGroup(n, base):
+    if n == 0:
+        digits = [0]
     else:
-        # If too long, trim the excess
-        byte_array = byte_array[:target_size]
+        digits = []
+        while n:
+            n, remainder = divmod(n, base)
+            digits.append(remainder)
+        digits.reverse()
+    return digits
+
+
+def ECC_Operator(large_integers, k, Pb):
+    kG = k * SECP256k1.generator
+    kPb = k * Pb.pubkey.point
+    Pc = [kPb + pointFromPixel(i) for i in large_integers]
+    return Pc, kG
+
+
+def pointFromPixel(pixel):
+    x = pixel
+    y = (x**3 + SECP256k1.curve.a() * x + SECP256k1.curve.b()) % SECP256k1.curve.p()
+    return ellipticcurve.PointJacobi(SECP256k1.curve, x, y, 0)
+
+
+def bytesConvertor(cipher_text):
+    byte_array = list()
+    for item in cipher_text:
+        pixel = pixelfromPoint(item)
+        pixels = getPixelsFromGroup(pixel, 258)
+        print(len(pixels))
+        byte_array.extend(pixels)
     return byte_array
 
-# Adjusted image reconstruction to handle mismatch in array size
-def reconstruct_image(cipher_bytes, width, height, num_channels):
+
+def pixelfromPoint(point):
+    return point.x()
+
+
+def imageBuilder(cipher_bytes, width, height, num_channels):
     expected_size = width * height * num_channels
-    adjusted_cipher_bytes = np.array(cipher_bytes[:expected_size]).reshape((height, width, num_channels))
-    reconstructed_image = Image.fromarray(adjusted_cipher_bytes.astype('uint8'))
-    reconstructed_image.save('encrypted_image.png')
+    adjusted_cipher_bytes = np.array(cipher_bytes[:expected_size]).reshape(
+        (height, width, num_channels)
+    )
+    reconstructed_image = Image.fromarray(adjusted_cipher_bytes.astype("uint8"))
+    reconstructed_image.save("encrypted_image.png")
 
-# Main function to execute the steps
-def main(image_path):
-    encrypted_pixels, num_channels, (width, height) = load_and_encrypt_image(image_path)
-    large_integers = pixels_to_large_integers(encrypted_pixels)
-    cipher_text = ecc_operations(large_integers)
-    target_size = width * height * num_channels  # Calculate the expected size of the cipher_bytes
-    cipher_bytes = convert_to_byte_range(cipher_text, target_size)  # Adjust the call
-    reconstruct_image(cipher_bytes, width, height, num_channels)
+
+def imageEncryptor(image_path, public_key):
+    encrypted_pixels, num_channels, (width, height) = imageLoader(image_path)
+    large_integers = pixelsGrouping(encrypted_pixels)
+    cipher_text, generator = ECC_Operator(
+        large_integers,
+        int.from_bytes(os.urandom(32), "big") % SECP256k1.order,
+        public_key,
+    )
+    cipher_bytes = bytesConvertor(cipher_text)
+    imageBuilder(
+        cipher_bytes, width, height, math.ceil(len(cipher_bytes) / (width * height))
+    )
     print("Image encryption and reconstruction complete.")
-
-
-# Replace 'path_to_your_image.png' with the actual image path
-main('../resources/Cat.jpg')
+    return generator
